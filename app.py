@@ -1,278 +1,176 @@
-from flask import Flask, render_template, request, redirect, session, flash, url_for
-import sqlite3
-import os
-import uuid
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3
 
 app = Flask(__name__)
-app.secret_key = "super-secret-key-change-this-in-production"
-
-# ตั้งค่าพิกัดโฟลเดอร์สำหรับเก็บรูปภาพ
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# ---------------- DB CONNECT ----------------
-# [แก้ไขล่าสุด ⭐️] ย้ายไปเซฟในโฟลเดอร์ /tmp ของ Render เพื่อให้จำข้อมูลสมาชิกได้จริง ไม่หายตอนกดปิดคอนเนกชัน
-def connect():
-    if os.environ.get("RENDER"):
-        db_path = "/tmp/webboard_production.db"
-    else:
-        db_path = os.path.join(BASE_DIR, "webboard_v2.db")
-        
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-# ---------------- INIT DB ----------------
+app.secret_key = 'your_secret_key'
+#database
 def init_db():
-    conn = connect()
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        password TEXT
-    )
-    """)
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS posts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        content TEXT,
-        author TEXT,
-        image_filename TEXT
-    )
-    """)
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id INTEGER,
-        content TEXT,
-        author TEXT
-    )
-    """)
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS likes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        post_id INTEGER,
-        user TEXT,
-        UNIQUE(post_id, user)
-    )
-    """)
+    # Users Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL
+        )
+    ''')
+    # Posts Table
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            user_id INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+    ''')
     conn.commit()
     conn.close()
-
-# ---------------- REGISTER & LOGIN & LOGOUT ----------------
-@app.route("/register", methods=["GET", "POST"])
+init_db()
+#หน้าแรกhome 
+@app.route('/')
+def index():
+    conn = sqlite3.connect('database.db')
+    c = conn.cursor()
+    c.execute("""
+        SELECT posts.id,
+               posts.title,
+               posts.content,
+               users.username
+        FROM posts
+        JOIN users
+        ON posts.user_id = users.id
+        ORDER BY posts.id DESC
+    """)
+    posts = c.fetchall()
+    conn.close()
+    return render_template('index.html',
+        username=session.get('username'),
+        posts=posts
+    )
+#สมัครสมาชิก
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"]
-        if not username or not password:
-            flash("โปรดกรอกข้อมูลให้ครบถ้วน", "danger")
-            return redirect("/register")
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
         hashed_password = generate_password_hash(password)
-        conn = connect()
+        conn = sqlite3.connect('database.db')
         c = conn.cursor()
         try:
-            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, hashed_password))
+            c.execute(
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                (username, hashed_password)
+            )
             conn.commit()
-            flash("สมัครสมาชิกสำเร็จ! โปรดล็อกอินเพื่อเข้าสู่ระบบ", "success")
-            return redirect("/login")
+            flash(
+                'การลงทะเบียนสำเร็จ! กรุณาเข้าสู่ระบบ',
+                'success'
+            )
+            return redirect(url_for('login'))
         except sqlite3.IntegrityError:
-            flash("ชื่อผู้ใช้นี้ถูกใช้ไปแล้ว", "danger")
+            flash(
+                'ชื่อผู้ใช้นี้มีอยู่แล้ว กรุณาเลือกชื่ออื่น',
+                'danger'
+            )
         finally:
             conn.close()
-    return render_template("register.html")
-
-@app.route("/login", methods=["GET", "POST"])
+    return render_template('register.html')
+#ล็อกอิน
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == "POST":
-        username = request.form["username"].strip()
-        password = request.form["password"]
-        conn = connect()
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        conn = sqlite3.connect('database.db')
         c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE username = ?", (username,))
+        c.execute(
+            "SELECT * FROM users WHERE username = ?",
+            (username,)
+        )
         user = c.fetchone()
         conn.close()
-        if user and check_password_hash(user["password"], password):
-            session["username"] = user["username"]
-            flash(f"ยินดีต้อนรับคุณ {user['username']}", "success")
-            return redirect("/")
+        if user and check_password_hash(user[2], password):
+            session['user_id'] = user[0]
+            session['username'] = user[1]
+            flash('เข้าสู่ระบบสำเร็จ!', 'success')
+            return redirect(url_for('index'))
         else:
-            flash("ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "danger")
-    return render_template("login.html")
-
-@app.route("/logout")
+            flash(
+                'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
+                'danger'
+            )
+    return render_template('login.html')
+#ล็อกเอาท์
+@app.route('/logout')
 def logout():
-    session.pop("username", None)
-    flash("ออกจากระบบเรียบร้อยแล้ว", "info")
-    return redirect("/")
-
-# ---------------- HOME ----------------
-@app.route("/", methods=["GET", "HEAD"])
-def home():
-    if request.method == "HEAD":
-        return "", 200
-
-    posts = []
-    all_comments = []
-
-    try:
-        conn = connect()
-        c = conn.cursor()
-        c.execute("""
-        SELECT 
-            p.*,
-            (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) as comment_count,
-            (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) as like_count
-        FROM posts p
-        ORDER BY p.id DESC
-        """)
-        posts = c.fetchall()
-        
-        c.execute("SELECT * FROM comments ORDER BY id ASC")
-        all_comments = c.fetchall()
-        conn.close()
-    except Exception as e:
-        print(f"--- Database temporal bypass: {e} ---")
-        posts = []
-        all_comments = []
-
-    return render_template("index.html", posts=posts, comments=all_comments)
-
-# ---------------- CREATE POST ----------------
-@app.route("/create", methods=["POST"])
+    session.pop('user_id', None)
+    session.pop('username', None)
+    flash('ออกจากระบบเรียบร้อยแล้ว', 'success')
+    return redirect(url_for('index'))
+#สร้างโพสต์
+@app.route('/create', methods=['GET', 'POST'])
 def create():
-    if "username" not in session:
-        flash("กรุณาล็อกอินก่อนสร้างโพสต์", "danger")
-        return redirect("/login")
+    if 'user_id' not in session:
+        flash(
+            'กรุณาเข้าสู่ระบบก่อนสร้างโพสต์',
+            'danger'
+        )
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        title = request.form['title']
+        content = request.form['content']
+        conn = sqlite3.connect('database.db')
+        c = conn.cursor()
+        c.execute(
+            """
+            INSERT INTO posts
+            (title, content, user_id)
+            VALUES (?, ?, ?)
+            """,
+            (
+                title,
+                content,
+                session['user_id']
+            )
+        )
+        conn.commit()
+        conn.close()
+        flash(
+            'สร้างโพสต์เรียบร้อยแล้ว',
+            'success'
+        )
+        return redirect(url_for('index'))
+    return render_template('create.html')
+#ลบโพสต์
+@app.route('/delete/<int:post_id>')
+def delete(post_id):
 
-    title = request.form["title"]
-    content = request.form["content"]
-    image_filename = None
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
-    if 'image' in request.files:
-        file = request.files['image']
-        if file and file.filename != '' and allowed_file(file.filename):
-            ext = file.filename.rsplit('.', 1)[1].lower()
-            unique_filename = f"{uuid.uuid4().hex}.{ext}"
-            try:
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], unique_filename))
-                image_filename = unique_filename
-            except Exception:
-                image_filename = None
-
-    conn = connect()
+    conn = sqlite3.connect('database.db')
     c = conn.cursor()
     c.execute(
-        "INSERT INTO posts(title, content, author, image_filename) VALUES(?,?,?,?)",
-        (title, content, session["username"], image_filename)
+        """
+        DELETE FROM posts
+        WHERE id = ?
+        AND user_id = ?
+        """,
+        (
+            post_id,
+            session['user_id']
+        )
     )
     conn.commit()
     conn.close()
-    return redirect("/")
-
-# ---------------- COMMENT & LIKE ----------------
-@app.route("/comment/<int:pid>", methods=["POST"])
-def comment(pid):
-    if "username" not in session:
-        flash("กรุณาล็อกอินก่อนแสดงความคิดเห็น", "danger")
-        return redirect("/login")
-    conn = connect()
-    c = conn.cursor()
-    c.execute("INSERT INTO comments(post_id, content, author) VALUES(?,?,?)", (pid, request.form["content"], session["username"]))
-    conn.commit()
-    conn.close()
-    return redirect("/")
-
-@app.route("/like/<int:pid>")
-def like(pid):
-    if "username" not in session:
-        flash("กรุณาล็อกอินก่อนกดถูกใจ", "danger")
-        return redirect("/login")
-    conn = connect()
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO likes(post_id, user) VALUES(?,?)", (pid, session["username"]))
-        conn.commit()
-    except sqlite3.IntegrityError:
-        c.execute("DELETE FROM likes WHERE post_id = ? AND user = ?", (pid, session["username"]))
-        conn.commit()
-    finally:
-        conn.close()
-    return redirect("/")
-
-# ---------------- EDIT & UPDATE ----------------
-@app.route("/edit/<int:post_id>")
-def edit(post_id):
-    if "username" not in session:
-        flash("กรุณาล็อกอินก่อน", "danger")
-        return redirect("/login")
-    conn = connect()
-    c = conn.cursor()
-    c.execute("SELECT * FROM posts WHERE id=?", (post_id,))
-    post = c.fetchone()
-    conn.close()
-    if post and post["author"] != session["username"]:
-        flash("คุณไม่มีสิทธิ์แก้ไขโพสต์นี้", "danger")
-        return redirect("/")
-    return render_template("edit.html", post=post)
-
-@app.route("/update/<int:post_id>", methods=["POST"])
-def update(post_id):
-    if "username" not in session:
-        return redirect("/login")
-    conn = connect()
-    c = conn.cursor()
-    c.execute("SELECT author, image_filename FROM posts WHERE id=?", (post_id,))
-    post = c.fetchone()
-    
-    if post and post["author"] == session["username"]:
-        c.execute("UPDATE posts SET title=?, content=? WHERE id=?", (request.form["title"], request.form["content"], post_id))
-        conn.commit()
-        flash("แก้ไขโพสต์สำเร็จ", "success")
-    else:
-        flash("คุณไม่มีสิทธิ์แก้ไขโพสต์นี้", "danger")
-    conn.close()
-    return redirect("/")
-
-# ---------------- DELETE ----------------
-@app.route("/delete/<int:post_id>")
-def delete_post(post_id):
-    if "username" not in session:
-        return redirect("/login")
-
-    conn = connect()
-    c = conn.cursor()
-    c.execute("SELECT author, image_filename FROM posts WHERE id=?", (post_id,))
-    post = c.fetchone()
-    
-    if post and post["author"] == session["username"]:
-        if post["image_filename"]:
-            try:
-                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], post["image_filename"]))
-            except Exception:
-                pass
-
-        c.execute("DELETE FROM posts WHERE id=?", (post_id,))
-        c.execute("DELETE FROM comments WHERE post_id=?", (post_id,))
-        c.execute("DELETE FROM likes WHERE post_id=?", (post_id,))
-        conn.commit()
-        flash("ลบโพสต์และรูปภาพเรียบร้อยแล้ว", "success")
-    else:
-        flash("คุณไม่มีสิทธิ์ลบโพสต์นี้", "danger")
-
-    conn.close()
-    return redirect("/")
-
-init_db()
+    flash('ลบโพสต์เรียบร้อยแล้ว', 'success')
+    return redirect(url_for('index'))
+# รันแอป
+import os
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)

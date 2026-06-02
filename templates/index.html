@@ -1,118 +1,136 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Webboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Web Board</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+  </head>
+  <body>
+    <div class="container">
+  <nav class="navbar navbar-expand-lg bg-body-tertiary">
+ <div class="container-fluid">
+    
+    <!-- ชื่อเว็บไซต์ ฝั่งซ้าย -->
+    <a class="navbar-brand" href="#">Web Board</a>
+    <!-- ค้นหา -->
+    <form class="d-flex mx-auto gap-2" role="search" style="width: 900px;">
+      <input class="form-control me-2" type="search" placeholder="Search" aria-label="Search"/>
+      <button class="btn btn-outline-success" type="submit">Search</button>
+    </form>
+    <!-- เมนู ข้างบนขวา -->
+     <ul class="nav nav-pills gap-2">
 
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container" style="max-width: 800px;">
-        <a class="navbar-brand" href="/">🔥 Webboard</a>
-        <div class="d-flex text-white align-items-center gap-3">
-            {% if session['username'] %}
-                <span>สวัสดี, <strong>{{ session['username'] }}</strong></span>
-                <a href="/logout" class="btn btn-sm btn-danger">Logout</a>
-            {% else %}
-                <a href="/login" class="btn btn-sm btn-outline-light">Login</a>
-                <a href="/register" class="btn btn-sm btn-primary">Register</a>
-            {% endif %}
-        </div>
+    <li class="nav-item">
+        <a class="nav-link"
+           href="{{ url_for('index') }}">
+           Home
+        </a>
+    </li>
+
+    {% if username %}
+
+    <li class="nav-item">
+        <span class="navbar-text">
+        {{ username }}
+        </span>
+    </li>
+
+    <li class="nav-item">
+        <a class="btn btn-outline-danger"
+           href="{{ url_for('logout') }}">Log Out
+        </a>
+    </li>
+
+    {% else %}
+    <li class="nav-item">
+        <a class="nav-link"
+           href="{{ url_for('login') }}">Log In
+        </a>
+    </li>
+
+    <li class="nav-item">
+        <a class="nav-link"
+           href="{{ url_for('register') }}">Sign Up
+        </a>
+    </li>
+    {% endif %}
+</ul>
+</div>
     </div>
-</nav>
-
-<div class="container" style="max-width: 800px;">
-
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            {% for category, message in messages %}
-                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    <div class = "container" mt-3">
+     {% with message = get_flashed_messages(with_categories=true) %}
+        {% if message %}
+            {% for category, message in message %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show mt-3" role="alert">
                     {{ message }}
+                    <button type="button"
+                            class="btn-close" 
+                            data-bs-dismiss="alert" 
+                            aria-label="Close">
+                    </button>
                 </div>
             {% endfor %}
         {% endif %}
-    {% endwith %}
-
-    <div class="card p-3 mb-4 shadow-sm">
-        {% if session['username'] %}
-            <form action="/create" method="POST" enctype="multipart/form-data">
-                <input name="title" class="form-control mb-2" placeholder="Title" required>
-                <textarea name="content" class="form-control mb-2" placeholder="What's on your mind?, {{ session['username'] }}" rows="3" required></textarea>
-                
-                <div class="mb-2">
-                    <label class="form-label small text-muted mb-1">แนบรูปภาพประกอบ (ถ้ามี):</label>
-                    <input type="file" name="image" class="form-control form-control-sm" accept="image/*">
-                </div>
-                
-                <button class="btn btn-primary">Post</button>
-            </form>
-        {% else %}
-            <div class="text-center py-2">
-                <p class="mb-2 text-muted">เข้าสู่ระบบเพื่อร่วมแบ่งปันเรื่องราวและอัปโหลดรูปภาพพูดคุยกับคอมมูนิตี้</p>
-                <a href="/login" class="btn btn-sm btn-primary">เข้าสู่ระบบเลย</a>
-            </div>
-        {% endif %}
+     {% endwith %}
     </div>
+  </nav>
+<div class="card text-center
+             mb-4 mx-auto  
+             border-primary"
+             style="width: 85%;">
+     
+    <div class="card-body py-5">
 
-    {% if posts %}
-        {% for post in posts %}
-        <div class="card mb-3 shadow-sm">
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <h5 class="mb-0">{{ post['title'] }}</h5>
-                    <span class="badge bg-secondary">โดย: {{ post['author'] if post['author'] else 'ไม่ระบุชื่อ' }}</span>
-                </div>
-                
-                <p class="text-secondary my-3">{{ post['content'] }}</p>
+        <h2 class="mb-3">
+             มีคำถามหรืออยากแบ่งปันอะไรไหม?
+        </h2>
 
-                {% if post['image_filename'] %}
-                    <div class="mb-3 text-center bg-black rounded border overflow-hidden" style="max-height: 400px;">
-                        <img src="{{ url_for('static', filename='uploads/' + post['image_filename']) }}" class="img-fluid" style="max-height: 400px; object-fit: contain;" alt="Post image">
-                    </div>
-                {% endif %}
+        <p class="text-muted">
+            สร้างกระทู้เพื่อพูดคุย แลกเปลี่ยนความคิดเห็น และถามคำถามกับสมาชิกคนอื่น ๆ
+        </p>
+        {% if username %}
+        <a href="{{ url_for('create') }}"
+        class="btn btn-primary btn-lg px-5 mt-2"> สร้างกระทู้ใหม่
+        </a>
+        {% else %}
+        <a href="{{ url_for('login') }}"
+        class="btn btn-secondary btn-lg px-5 mt-2">Login เพื่อสร้างกระทู้
+        </a>
+        {% endif %}
 
-                <div class="d-flex gap-2 mb-3">
-                    <a href="/like/{{ post['id'] }}" class="btn btn-sm btn-outline-danger">
-                        ❤️ Like ({{ post['like_count'] }})
-                    </a>
-                    <span class="btn btn-sm btn-outline-secondary disabled">
-                        💬 Comments ({{ post['comment_count'] }})
-                    </span>
-                    {% if session['username'] and session['username'] == post['author'] %}
-                        <a href="/edit/{{ post['id'] }}" class="btn btn-sm btn-outline-primary">✏️ Edit</a>
-                        <a href="/delete/{{ post['id'] }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('คุณแน่ใจใช่ไหมว่าต้องการลบโพสต์และรูปภาพนี้?')">🗑️ Delete</a>
-                    {% endif %}
-                </div>
-
-                <div class="comments-list mb-2">
-                    {% for comment in comments %}
-                        {% if comment['post_id'] == post['id'] %}
-                            <div class="p-2 mb-1 bg-light border rounded small text-dark d-flex justify-content-between">
-                                <span>💬 {{ comment['content'] }}</span>
-                                <small class="text-muted">โดย: {{ comment['author'] if comment['author'] else 'ทั่วไป' }}</small>
-                            </div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
-
-                {% if session['username'] %}
-                    <form action="/comment/{{ post['id'] }}" method="POST" class="mt-2">
-                        <input name="content" class="form-control form-control-sm" placeholder="Write comment..." required>
-                    </form>
-                {% endif %}
-
-            </div>
-        </div>
-        {% endfor %}
-    {% else %}
-        <div class="text-center text-muted my-5">
-            <p>ยังไม่มีโพสต์ในตอนนี้ มาเริ่มสร้างโพสต์แรกกัน!</p>
-        </div>
-    {% endif %}
-
+    </div>
 </div>
 
-</body>
+<!-- รายการกระทู้ -->
+<h3 class="mb-3 text-center">กระทู้ล่าสุด</h3>
+
+{% if posts %}
+    {% for post in posts %}
+        <div class="card text-center mb-4 w-75 mx-auto">
+            <div class="card-body">
+
+                <h5 class="card-title">
+                    {{ post[1] }}
+                </h5>
+
+                <p class="card-text">
+                    {{ post[2] }}
+                </p>
+
+                <small class="text-muted">
+                    โพสต์โดย {{ post[3] }}
+                </small>
+
+            </div>
+        </div>
+    {% endfor %}
+{% else %}
+    <div class="alert alert-info text-center" role="alert">
+        ไม่มีโพสต์ใด ๆ ในขณะนี้
+    </div>
+{% endif %}
+    <!--bootstrap javascript-->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+  </body>
 </html>
